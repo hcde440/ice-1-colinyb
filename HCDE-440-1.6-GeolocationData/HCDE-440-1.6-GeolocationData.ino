@@ -17,9 +17,21 @@
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h> //provides the ability to parse and construct JSON objects
 
-const char* ssid = "YOUR WIFI NETWORK NAME HERE";
-const char* pass = "YOU WIFI PASSWORD HERE";
-const char* key = "YOUR KEY HERE";
+const char* ssid = "NM";
+const char* pass = "nikita123";
+const char* key = "b4038b91c68deb4bdec045124c6df669";
+const char* weatherkey = "73b43e4a3b95d2a36b9d9551fa564d82";
+
+typedef struct { //creating a new data type with the name of MetData
+  //You should report temperature, humidity, windspeed, wind direction, and cloud conditions
+  String temperature;
+  String humidity;
+  String windspeed;
+  String windDir;
+  String cloudCon;
+} MetData;
+
+MetData weather;
 
 typedef struct { //here we create a new data type definition, a box to hold other data types
   String ip;    //
@@ -36,49 +48,87 @@ GeoData location; //we have created a GeoData type, but not an instance of that 
                   //so we create the variable 'location' of type GeoData
 
 void setup() {
-  Serial.begin(115200);
-  delay(10);
+  Serial.begin(115200); //starts serial port
+  delay(10); //delays 10ms
   Serial.print("This board is running: ");
-  Serial.println(F(__FILE__));
+  Serial.println(F(__FILE__)); //compiled file
   Serial.print("Compiled: ");
-  Serial.println(F(__DATE__ " " __TIME__));
+  Serial.println(F(__DATE__ " " __TIME__)); //time of compiling
   
-  Serial.print("Connecting to "); Serial.println(ssid);
+  Serial.print("Connecting to "); Serial.println(ssid); //prints what wifi is being connected to
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, pass);
+  WiFi.begin(ssid, pass); //handles connecting to wifi
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) { //showing the user something is happening until connected
     delay(500);
     Serial.print(".");
   }
-
+  // printing confirmation and assigned internal ip address 
   Serial.println(); Serial.println("WiFi connected"); Serial.println();
   Serial.print("Your ESP has been assigned the internal IP address ");
   Serial.println(WiFi.localIP());
 
-  getGeo();
+  getGeo(); //calls the getGeo method
 
+  //prints out everything about IP and location
   Serial.println("Your external IP address is " + location.ip);
   Serial.print("Your ESP is currently in " + location.cn + " (" + location.cc + "),");
   Serial.println(" in or near " + location.cy + ", " + location.rc + ".");
-  Serial.println("and located at (roughly) ");
+  Serial.print("and located at (roughly) ");
   Serial.println(location.lt + " latitude by " + location.ln + " longitude.");
+
+  getMet(); //calls the getMet method
+
+  //printing out weather data
+  Serial.println("The temperature in your area is " + weather.temperature + " degrees F.");
+  Serial.println("The humidity is " + weather.humidity + "%.");
+  Serial.println("The windspeed is " + weather.windspeed + " MPH at a direction of " + weather.windDir + " degrees.");
+  Serial.println("The cloud coverage is " + weather.cloudCon + "%");
 }
 
 void loop() {
   //if we put getIP() here, it would ping the endpoint over and over . . . DOS attack?
 }
 
+void getMet() {
+  HTTPClient theClient; //creates an HTTPClient object named theClient
+  String apistring = "http://api.openweathermap.org/data/2.5/weather?q=" + location.cy + "&units=imperial&appid=" + weatherkey; //concatonating the api request url
+  theClient.begin(apistring); //make the request
+  int httpCode = theClient.GET(); //get the HTTP code (-1 is fail)
+
+  if (httpCode > 0) { //test if the request failed
+    if (httpCode == 200) { //if successful...
+      DynamicJsonBuffer jsonBuffer; //create a DynamicJsonBuffer object named jsonBuffer
+      String payload = theClient.getString(); //get the string of json data from the request and assign it to payload
+      Serial.println("Parsing...");
+      JsonObject& root = jsonBuffer.parse(payload); //set the json data to the variable root
+      
+      if (!root.success()) { //check if the parsing worked correctly
+        Serial.println("parseObject() failed");
+        Serial.println(payload); //print what the json data is in a string form
+        return;
+      } //assign MetData object "weather" variables with the following data from the JsonObject
+      weather.temperature = root["main"]["temp"].as<String>();
+      weather.humidity = root["main"]["humidity"].as<String>();
+      weather.windspeed = root["wind"]["speed"].as<String>();
+      weather.windDir = root["wind"]["deg"].as<String>();
+      weather.cloudCon = root["clouds"]["all"].as<String>();
+    } else { //print error if the request wasnt successful
+      Serial.println("Had an error connecting to the network.");
+    }
+  }
+}
+
 String getIP() {
   HTTPClient theClient;
   String ipAddress;
 
-  theClient.begin("http://api.ipify.org/?format=json");
-  int httpCode = theClient.GET();
+  theClient.begin("http://api.ipify.org/?format=json"); //Make the request
+  int httpCode = theClient.GET(); //get the http code for the request
 
   if (httpCode > 0) {
-    if (httpCode == 200) {
+    if (httpCode == 200) { //making sure the request was successful
 
       DynamicJsonBuffer jsonBuffer;
 
@@ -86,12 +136,12 @@ String getIP() {
       JsonObject& root = jsonBuffer.parse(payload);
       ipAddress = root["ip"].as<String>();
 
-    } else {
+    } else { //error message for unsuccessful request
       Serial.println("Something went wrong with connecting to the endpoint.");
       return "error";
     }
   }
-  return ipAddress;
+  return ipAddress; //returning the ipAddress 
 }
 
 void getGeo() {
@@ -136,3 +186,4 @@ void getGeo() {
     }
   }
 }
+
